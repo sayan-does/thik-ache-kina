@@ -1,27 +1,18 @@
-# CLI Agent Remote Control - Bridge Daemon Configuration
-
-server:
-  host: "0.0.0.0"       # Listens on all interfaces (access controlled via Bearer Token + Origin check)
-  port: 8765
-  heartbeat_seconds: 30
-  buffer_capacity: 1000 # Number of terminal output lines retained in ring buffer
-
-security:
-  # 256-bit Bearer Token for authenticating WebSocket connections from phone.
-  # If left empty, a secure token will be automatically generated and saved on startup.
-  auth_token: ""
-  allow_browser_origin: false  # Defense against Cross-Site WebSocket Hijacking (CSWSH)
-
-notifications:
-  enabled: true
-  provider: "ntfy"
-  # High-entropy random topic on ntfy.sh (e.g. ntfy.sh/agent-ctrl-<uuid>)
-  # If left empty, bridge will generate a unique UUID topic on first run.
-  topic: ""
-  server_url: "https://ntfy.sh"
-  cooldown_seconds: 15 # Avoid spamming notifications if prompt repeatedly triggers
-
 agent:
-  default_command: "powershell.exe"
-  conpty_rows: 32
   conpty_cols: 90
+  conpty_rows: 32
+  default_command: powershell.exe
+notifications:
+  cooldown_seconds: 15
+  enabled: true
+  provider: ntfy
+  server_url: https://ntfy.sh
+  topic: agent-remote-c51a1a90fb68
+security:
+  allow_browser_origin: false
+  auth_token: agent123
+server:
+  buffer_capacity: 1000
+  heartbeat_seconds: 30
+  host: 0.0.0.0
+  port: 8765
