@@ -39,17 +39,21 @@ fun XTermWebView(
 
         // Safely pass text into JS via JSON encoding to handle all escape codes and newlines
         val encoded = JSONObject.quote(text)
-        webView.evaluateJavascript("window.writeTerminal($encoded);", null)
+        webView.post {
+            webView.evaluateJavascript("window.writeTerminal($encoded);", null)
+        }
     }
 
     fun clearAndWriteTerminal(history: String) {
         val webView = webViewInstance ?: return
         if (!isPageLoaded) return
 
-        webView.evaluateJavascript("window.clearTerminal();", null)
-        if (history.isNotEmpty()) {
-            val encoded = JSONObject.quote(history)
-            webView.evaluateJavascript("window.writeTerminal($encoded);", null)
+        webView.post {
+            webView.evaluateJavascript("window.clearTerminal();", null)
+            if (history.isNotEmpty()) {
+                val encoded = JSONObject.quote(history)
+                webView.evaluateJavascript("window.writeTerminal($encoded);", null)
+            }
         }
     }
 

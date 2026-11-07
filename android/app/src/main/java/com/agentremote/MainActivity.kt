@@ -3,6 +3,7 @@ package com.agentremote
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +25,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         tokenStorage = TokenStorage(this)
 
-        var currentScreen by mutableStateOf(if (isDeepLinkIntent(intent)) Screen.Terminal else Screen.Home)
+        val startScreen = if (isDeepLinkIntent(intent) && tokenStorage.isConfigured) {
+            Screen.Terminal
+        } else {
+            Screen.Home
+        }
 
         setContent {
             AgentRemoteTheme {
@@ -32,7 +37,13 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = CanvasDark
                 ) {
+                    var currentScreen by remember { mutableStateOf(startScreen) }
                     val agentState by terminalViewModel.agentState.collectAsState()
+
+                    // Ensure Android system back gesture navigates from Terminal back to Home
+                    BackHandler(enabled = currentScreen == Screen.Terminal) {
+                        currentScreen = Screen.Home
+                    }
 
                     when (currentScreen) {
                         Screen.Home -> {
@@ -40,7 +51,9 @@ class MainActivity : ComponentActivity() {
                                 agentState = agentState,
                                 tokenStorage = tokenStorage,
                                 onOpenTerminal = {
-                                    terminalViewModel.connect()
+                                    if (tokenStorage.isConfigured) {
+                                        terminalViewModel.connect()
+                                    }
                                     currentScreen = Screen.Terminal
                                 }
                             )
@@ -60,7 +73,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (isDeepLinkIntent(intent)) {
+        if (isDeepLinkIntent(intent) && tokenStorage.isConfigured) {
             terminalViewModel.connect()
         }
     }
@@ -71,8 +84,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Re-establish connection when app is opened in foreground
-        terminalViewModel.connect()
+        // Re-establish connection when app is opened in foreground, if configured
+        if (::tokenStorage.isInitialized && tokenStorage.isConfigured) {
+            terminalViewModel.connect()
+        }
     }
 
     override fun onPause() {

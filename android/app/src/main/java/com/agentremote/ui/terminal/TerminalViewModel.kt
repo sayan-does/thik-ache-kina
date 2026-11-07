@@ -29,7 +29,9 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     val sessionId: StateFlow<String> = _sessionId.asStateFlow()
 
     init {
-        connect()
+        if (tokenStorage.isConfigured) {
+            connect()
+        }
     }
 
     fun connect() {

@@ -5,7 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,8 +26,6 @@ fun TriageActionCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isDiffExpanded by remember { mutableStateOf(true) }
-
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -59,7 +59,7 @@ fun TriageActionCard(
                     fontSize = 12.sp,
                     modifier = Modifier
                         .clickable { onDismiss() }
-                        .padding(4.dp)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
 
@@ -88,22 +88,31 @@ fun TriageActionCard(
                         text = prompt.target,
                         color = AccentCyan,
                         fontSize = 12.sp,
-                        fontFamily = TerminalFontFamily
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            // Diff Preview (if extracted)
+            // Bounded Diff Preview (Guaranteed not to push action buttons off screen)
             if (!prompt.diffPreview.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
+                val rawLines = prompt.diffPreview.lines()
+                val maxVisibleLines = 25
+                val displayLines = rawLines.take(maxVisibleLines)
+                val remainingCount = rawLines.size - maxVisibleLines
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = 180.dp)
                         .background(CanvasDark, RoundedCornerShape(6.dp))
                         .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
+                        .verticalScroll(rememberScrollState())
                         .padding(8.dp)
                 ) {
-                    prompt.diffPreview.split("\n").forEach { line ->
+                    displayLines.forEach { line ->
                         val color = when {
                             line.startsWith("+") -> AccentEmerald
                             line.startsWith("-") -> AccentCrimson
@@ -117,6 +126,16 @@ fun TriageActionCard(
                             fontFamily = TerminalFontFamily,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (remainingCount > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "... (+$remainingCount more lines)",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            fontFamily = TerminalFontFamily
                         )
                     }
                 }
@@ -133,16 +152,16 @@ fun TriageActionCard(
                 )
             }
 
-            // Action Buttons / Option Chips
+            // Action Buttons / Option Chips (Prominent and immediately reachable)
             if (prompt.options.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                // Primary Option (First option)
+                // Primary Option (First option, e.g. [1] Approve)
                 val primary = prompt.options.first()
                 Button(
                     onClick = { onOptionSelected(primary.key) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(50.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = AccentEmerald,
                         contentColor = CanvasDark
@@ -156,7 +175,7 @@ fun TriageActionCard(
                     )
                 }
 
-                // Secondary Options (Remaining options)
+                // Secondary Options (Remaining options, e.g. [2] Reject, [3] Edit)
                 if (prompt.options.size > 1) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -168,7 +187,7 @@ fun TriageActionCard(
                                 onClick = { onOptionSelected(opt.key) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(46.dp),
+                                    .height(44.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = TextPrimary
                                 ),

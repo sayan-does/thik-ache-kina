@@ -5,9 +5,12 @@ Main entrypoint for spawning, wrapping, and streaming CLI agents.
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import secrets
+import socket
+import subprocess
 import sys
 import uuid
 import yaml
@@ -25,6 +28,47 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("agent-bridge")
+
+
+def get_detected_network_ips() -> dict:
+    """Detects active network interfaces: Tailscale (100.x.y.z) and Local LAN IP."""
+    ips = {"tailscale": None, "lan": None}
+
+    # 1. Try tailscale CLI
+    try:
+        res = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=1.5)
+        if res.returncode == 0 and res.stdout.strip():
+            ips["tailscale"] = res.stdout.strip().splitlines()[0].strip()
+    except Exception:
+        pass
+
+    # 2. Try socket outbound routing test
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("8.8.8.8", 80))
+        outbound = s.getsockname()[0]
+        s.close()
+        if outbound.startswith("100."):
+            if not ips["tailscale"]:
+                ips["tailscale"] = outbound
+        elif not outbound.startswith("127."):
+            ips["lan"] = outbound
+    except Exception:
+        pass
+
+    # 3. Fallback: inspect host IP list
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if ip.startswith("100.") and not ips["tailscale"]:
+                ips["tailscale"] = ip
+            elif not ip.startswith("127.") and not ips["lan"]:
+                ips["lan"] = ip
+    except Exception:
+        pass
+
+    return ips
 
 
 def load_or_init_config(config_path: str = "config.yaml") -> dict:
@@ -175,19 +219,37 @@ class BridgeDaemon:
         # Print banner
         auth_token = sec_cfg["auth_token"]
         topic = self.config["notifications"]["topic"]
-        print("\n" + "=" * 65)
+        detected_ips = get_detected_network_ips()
+        tailscale_ip = detected_ips.get("tailscale")
+        lan_ip = detected_ips.get("lan")
+        preferred_ip = tailscale_ip or lan_ip or "127.0.0.1"
+
+        print("\n" + "=" * 68)
         print("  🤖 CLI AGENT REMOTE CONTROL - BRIDGE DAEMON ACTIVE")
-        print("=" * 65)
+        print("=" * 68)
         print(f"  Session ID : {self.session_id}")
         print(f"  Command    : {self.command}")
         print(f"  WebSocket  : ws://localhost:{port}/ws")
         print(f"  Auth Token : {auth_token}")
         print(f"  ntfy Topic : {topic} (https://ntfy.sh/{topic})")
-        print("=" * 65)
-        print("  Configure your Android app with:")
-        print(f"    • Server IP : Your Tailscale 100.x.y.z (Port {port})")
-        print(f"    • Auth Token: {auth_token}")
-        print("=" * 65 + "\n")
+        print("-" * 68)
+        print("  Detected Network Endpoints:")
+        if tailscale_ip:
+            print(f"    • Tailscale IP : {tailscale_ip} -> ws://{tailscale_ip}:{port}/ws")
+        else:
+            print(f"    • Tailscale IP : (Not detected / not connected)")
+        if lan_ip:
+            print(f"    • Local LAN IP : {lan_ip} -> ws://{lan_ip}:{port}/ws")
+        print("-" * 68)
+        print("  Android 1-Tap Quick Connect Payload (Copy & tap 'Paste' in app):")
+        payload_json = json.dumps({
+            "host": preferred_ip,
+            "port": port,
+            "token": auth_token,
+            "ntfy": topic
+        })
+        print(f"    {payload_json}")
+        print("=" * 68 + "\n")
 
         # Spawn PTY Process
         agent_cfg = self.config["agent"]

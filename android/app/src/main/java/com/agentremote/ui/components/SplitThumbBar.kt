@@ -35,12 +35,14 @@ fun SplitThumbBar(
     var ctrlCMessage by remember { mutableStateOf<String?>(null) }
 
     fun triggerHaptic(durationMs: Long = 40) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator?.vibrate(durationMs)
-        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(durationMs)
+            }
+        } catch (_: Exception) {}
     }
 
     Column(
@@ -136,7 +138,7 @@ fun SplitThumbBar(
             Box(
                 modifier = Modifier
                     .height(44.dp)
-                    .width(90.dp)
+                    .width(96.dp)
                     .background(AccentCrimsonMuted.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
                     .border(1.dp, AccentCrimson.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                     .pointerInput(Unit) {
@@ -176,7 +178,9 @@ fun SplitThumbBar(
                     value = customText,
                     onValueChange = { customText = it },
                     placeholder = { Text("Enter prompt, instructions, or flags...") },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .imePadding(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary,

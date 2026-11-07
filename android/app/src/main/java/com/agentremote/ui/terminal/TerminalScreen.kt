@@ -1,5 +1,6 @@
 package com.agentremote.ui.terminal
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,9 @@ fun TerminalScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Intercept hardware and gesture back navigation to return cleanly to HomeScreen
+    BackHandler(onBack = onBack)
+
     val agentState by viewModel.agentState.collectAsState()
     val activePrompt by viewModel.activePrompt.collectAsState()
     val snapshotHistory by viewModel.snapshotHistory.collectAsState()

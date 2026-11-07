@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -27,33 +28,80 @@ class BridgeClient(
 
     private var webSocket: WebSocket? = null
     private var isManuallyClosed = false
+    private var isConnecting = false
     private var retryAttempt = 0
     private val handler = Handler(Looper.getMainLooper())
 
+    @Synchronized
     fun connect() {
         isManuallyClosed = false
+
+        if (!tokenStorage.isConfigured) {
+            Log.d(tag, "connect() called but TokenStorage is not configured")
+            handler.post {
+                listener.onConnectionStateChange(AgentState.DISCONNECTED)
+            }
+            return
+        }
+
+        // Deduplication: Avoid duplicate concurrent connections
+        if (isConnecting || webSocket != null) {
+            Log.d(tag, "connect() ignored: already connecting or active socket exists")
+            return
+        }
+
         val host = tokenStorage.host
         val port = tokenStorage.port
         val token = tokenStorage.authToken
 
-        if (!tokenStorage.isConfigured) {
-            listener.onConnectionStateChange(AgentState.DISCONNECTED)
+        // Zero-crash validation using HttpUrl
+        val validatedHttpUrl: HttpUrl? = try {
+            "http://$host:$port/ws".toHttpUrlOrNull() ?: HttpUrl.Builder()
+                .scheme("http")
+                .host(host)
+                .port(port)
+                .addPathSegment("ws")
+                .build()
+        } catch (e: Exception) {
+            Log.e(tag, "Malformed host/port configuration ($host:$port): ${e.message}")
+            null
+        }
+
+        if (validatedHttpUrl == null) {
+            Log.e(tag, "Failed to build valid HttpUrl for WebSocket connection")
+            handler.post {
+                listener.onConnectionStateChange(AgentState.ERROR)
+            }
             return
         }
 
-        listener.onConnectionStateChange(AgentState.CONNECTING)
-        val url = "ws://$host:$port/ws"
-        Log.d(tag, "Connecting to $url...")
+        val wsUrl = "ws://${validatedHttpUrl.host}:${validatedHttpUrl.port}${validatedHttpUrl.encodedPath}"
+        val request = try {
+            Request.Builder()
+                .url(wsUrl)
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to create OkHttp Request for $wsUrl: ${e.message}")
+            handler.post {
+                listener.onConnectionStateChange(AgentState.ERROR)
+            }
+            return
+        }
 
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("Authorization", "Bearer $token")
-            .build()
+        isConnecting = true
+        handler.post {
+            listener.onConnectionStateChange(AgentState.CONNECTING)
+        }
+        Log.d(tag, "Connecting to $wsUrl...")
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
-                Log.d(tag, "WebSocket connected successfully")
-                retryAttempt = 0
+                Log.d(tag, "WebSocket connected successfully to $wsUrl")
+                synchronized(this@BridgeClient) {
+                    isConnecting = false
+                    retryAttempt = 0
+                }
                 handler.post {
                     listener.onConnectionStateChange(AgentState.RUNNING)
                 }
@@ -68,7 +116,11 @@ class BridgeClient(
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                Log.d(tag, "WebSocket closed")
+                Log.d(tag, "WebSocket closed: $code / $reason")
+                synchronized(this@BridgeClient) {
+                    isConnecting = false
+                    webSocket = null
+                }
                 handler.post {
                     listener.onConnectionStateChange(AgentState.DISCONNECTED)
                 }
@@ -77,6 +129,10 @@ class BridgeClient(
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.w(tag, "WebSocket failure: ${t.message}")
+                synchronized(this@BridgeClient) {
+                    isConnecting = false
+                    webSocket = null
+                }
                 handler.post {
                     listener.onConnectionStateChange(AgentState.DISCONNECTED)
                 }
@@ -85,22 +141,35 @@ class BridgeClient(
         })
     }
 
+    @Synchronized
     fun disconnect() {
         isManuallyClosed = true
+        isConnecting = false
         handler.removeCallbacksAndMessages(null)
-        webSocket?.close(1000, "App paused or closed")
+        try {
+            webSocket?.close(1000, "App paused or closed")
+        } catch (e: Exception) {
+            webSocket?.cancel()
+        }
         webSocket = null
-        listener.onConnectionStateChange(AgentState.DISCONNECTED)
+        handler.post {
+            listener.onConnectionStateChange(AgentState.DISCONNECTED)
+        }
     }
 
     private fun scheduleReconnect() {
         if (isManuallyClosed || !tokenStorage.isConfigured) return
+
+        // Prevent exponential backoff integer shift overflow
+        // retryAttempt is incremented, and shift is safely clamped [0..4] (1s, 2s, 4s, 8s, 16s)
         retryAttempt++
-        // Exponential backoff with jitter: 1s, 2s, 4s, up to max 16s
-        val delayMs = (Math.min(16, 1 shl (retryAttempt - 1)) * 1000L)
+        val shift = (retryAttempt - 1).coerceIn(0, 4)
+        val delayMs = (1 shl shift) * 1000L
+
         Log.d(tag, "Scheduling reconnect attempt $retryAttempt in ${delayMs}ms")
+        handler.removeCallbacksAndMessages(null)
         handler.postDelayed({
-            if (!isManuallyClosed) {
+            if (!isManuallyClosed && !isConnecting && webSocket == null) {
                 connect()
             }
         }, delayMs)

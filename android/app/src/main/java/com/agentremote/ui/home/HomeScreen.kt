@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +24,7 @@ import com.agentremote.data.AgentState
 import com.agentremote.data.TokenStorage
 import com.agentremote.ui.components.LivePulsePill
 import com.agentremote.ui.theme.*
+import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,7 +54,13 @@ fun HomeScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = { isSettingsOpen = true }) {
+                    IconButton(onClick = {
+                        hostInput = tokenStorage.host
+                        portInput = tokenStorage.port.toString()
+                        tokenInput = tokenStorage.authToken
+                        ntfyInput = tokenStorage.ntfyTopic
+                        isSettingsOpen = true
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
@@ -220,28 +228,121 @@ fun HomeScreen(
                 Text(text = "Bridge Daemon Connection", color = TextPrimary)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 1-Tap Clipboard Paste Button
+                    FilledTonalButton(
+                        onClick = {
+                            val clipText = clipboardManager.getText()?.text?.trim()
+                            if (clipText.isNullOrEmpty()) {
+                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                            } else {
+                                var parsedAny = false
+                                // Attempt JSON parse
+                                if (clipText.startsWith("{") && clipText.endsWith("}")) {
+                                    try {
+                                        val json = JSONObject(clipText)
+                                        if (json.has("host")) {
+                                            val (h, p) = TokenStorage.sanitizeHost(json.getString("host"))
+                                            hostInput = h
+                                            if (p != null) portInput = p.toString()
+                                            parsedAny = true
+                                        }
+                                        if (json.has("port")) {
+                                            portInput = json.getInt("port").toString()
+                                            parsedAny = true
+                                        }
+                                        if (json.has("token")) {
+                                            tokenInput = TokenStorage.sanitizeToken(json.getString("token"))
+                                            parsedAny = true
+                                        }
+                                        if (json.has("ntfy")) {
+                                            ntfyInput = TokenStorage.sanitizeNtfyTopic(json.getString("ntfy"))
+                                            parsedAny = true
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+
+                                if (!parsedAny) {
+                                    // Parse key=value or ws:// or IP:port
+                                    if (clipText.contains("://") || clipText.contains(":") || clipText.contains(";")) {
+                                        val (h, p) = TokenStorage.sanitizeHost(clipText)
+                                        if (h.isNotBlank() && h != TokenStorage.DEFAULT_HOST) {
+                                            hostInput = h
+                                            if (p != null) portInput = p.toString()
+                                            parsedAny = true
+                                        }
+                                    } else if (clipText.length >= 32 && !clipText.contains(".")) {
+                                        // Hex auth token
+                                        tokenInput = TokenStorage.sanitizeToken(clipText)
+                                        parsedAny = true
+                                    }
+                                }
+
+                                if (parsedAny) {
+                                    Toast.makeText(context, "Imported configuration from clipboard!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    // Fallback: put in hostInput and sanitize
+                                    val (h, p) = TokenStorage.sanitizeHost(clipText)
+                                    hostInput = h
+                                    if (p != null) portInput = p.toString()
+                                    Toast.makeText(context, "Applied host from clipboard", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceElevated)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentPaste,
+                            contentDescription = "Paste",
+                            tint = AccentCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Paste from Clipboard", color = AccentCyan, fontSize = 12.sp)
+                    }
+
+                    // Lenient Host input: automatically splits IP:port and IP;port
                     OutlinedTextField(
                         value = hostInput,
-                        onValueChange = { hostInput = it },
+                        onValueChange = { raw ->
+                            if (raw.contains(":") || raw.contains(";")) {
+                                val (cleanedHost, extractedPort) = TokenStorage.sanitizeHost(raw)
+                                hostInput = cleanedHost
+                                if (extractedPort != null) {
+                                    portInput = extractedPort.toString()
+                                }
+                            } else {
+                                hostInput = raw.filterNot { it.isWhitespace() }
+                            }
+                        },
                         label = { Text("Laptop Tailscale IP (e.g. 100.82.14.92)") },
+                        placeholder = { Text("100.x.y.z or IP:8765") },
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     OutlinedTextField(
                         value = portInput,
-                        onValueChange = { portInput = it },
+                        onValueChange = { portInput = it.filter { ch -> ch.isDigit() } },
                         label = { Text("Port (Default 8765)") },
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     OutlinedTextField(
                         value = tokenInput,
-                        onValueChange = { tokenInput = it },
+                        onValueChange = { tokenInput = TokenStorage.sanitizeToken(it) },
                         label = { Text("Bearer Auth Token") },
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     OutlinedTextField(
                         value = ntfyInput,
-                        onValueChange = { ntfyInput = it },
+                        onValueChange = { ntfyInput = TokenStorage.sanitizeNtfyTopic(it) },
                         label = { Text("ntfy.sh Topic (Optional)") },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -250,12 +351,14 @@ fun HomeScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        tokenStorage.host = hostInput
-                        tokenStorage.port = portInput.toIntOrNull() ?: 8765
-                        tokenStorage.authToken = tokenInput
-                        tokenStorage.ntfyTopic = ntfyInput
+                        tokenStorage.saveConfig(
+                            rawHost = hostInput,
+                            rawPort = portInput,
+                            rawToken = tokenInput,
+                            rawNtfy = ntfyInput
+                        )
                         isSettingsOpen = false
-                        Toast.makeText(context, "Settings saved!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Settings saved successfully!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald)
                 ) {
