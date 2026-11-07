@@ -119,7 +119,7 @@ fun UpdateCard(
                     is UpdateStatus.Checking -> {
                         Text(
                             text = "CHECKING...",
-                            color = AccentYellow,
+                            color = AccentAmber,
                             fontSize = 10.sp,
                             fontFamily = TerminalFontFamily,
                             fontWeight = FontWeight.Bold
@@ -419,8 +419,8 @@ fun UpdateCard(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(AccentYellowMuted.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                                    .border(1.dp, AccentYellow.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                    .background(AccentAmberMuted.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                    .border(1.dp, AccentAmber.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                                     .padding(8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -428,7 +428,7 @@ fun UpdateCard(
                                 Icon(
                                     imageVector = Icons.Default.Security,
                                     contentDescription = "Permission",
-                                    tint = AccentYellow,
+                                    tint = AccentAmber,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
