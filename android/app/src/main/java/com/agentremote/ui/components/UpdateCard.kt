@@ -433,7 +433,7 @@ fun UpdateCard(
                                 )
                                 Text(
                                     text = "Android requires 'Install Unknown Apps' permission.",
-                                    color = AccentYellow,
+                                    color = AccentAmber,
                                     fontSize = 11.sp,
                                     fontFamily = TerminalFontFamily
                                 )
