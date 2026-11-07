@@ -21,9 +21,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.agentremote.BuildConfig
 import com.agentremote.data.AgentState
 import com.agentremote.data.TokenStorage
 import com.agentremote.ui.components.LivePulsePill
+import com.agentremote.ui.components.UpdateCard
 import com.agentremote.ui.theme.*
 import org.json.JSONObject
 
@@ -191,6 +193,9 @@ fun HomeScreen(
                     }
                 }
             }
+
+            // Software Update Section
+            UpdateCard(currentVersion = BuildConfig.VERSION_NAME)
 
             // Quick Launch Host Guide
             Card(
