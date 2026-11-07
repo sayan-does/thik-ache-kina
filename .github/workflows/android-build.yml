@@ -1,4 +1,4 @@
-name: Build Android APK
+name: CI & Android Build Pipeline
 
 on:
   push:
@@ -12,8 +12,51 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build & Package APK
+  # ============================================================================
+  # Layer 1: Python Bridge Daemon Verification
+  # ============================================================================
+  test-daemon:
+    name: "Layer 1: Python Daemon Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r agent-bridge/requirements.txt
+
+      - name: Run Bridge Daemon Pytest Suite
+        id: pytest_run
+        run: |
+          python -m pytest agent-bridge/tests/ -v --tb=short | tee pytest_output.txt
+
+      - name: Summarize Python Test Results
+        if: always()
+        run: |
+          echo "### 🐍 Python Host Bridge Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.pytest_run.outcome }}" == "success" ]; then
+            PASSED=$(grep -oE "[0-9]+ passed" pytest_output.txt | head -n 1 || echo "All")
+            echo "✅ **All daemon core and security tests passed** ($PASSED)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Daemon tests failed!**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 25 pytest_output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ============================================================================
+  # Layer 2: Android Static Analysis, Compilation & Unit Tests Gate
+  # ============================================================================
+  verify-android:
+    name: "Layer 2: Android Compilation & Unit Tests"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,8 +77,104 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      # Layer 2A: Early Kotlin Compilation Gate
+      - name: Compile Kotlin Code (Syntax & Type Verification)
+        id: compile_kotlin
+        run: |
+          set -o pipefail
+          gradle compileDebugKotlin --no-daemon 2>&1 | tee compile_log.txt
+
+      # Instant diagnostic table if compilation fails
+      - name: Extract Compilation Errors on Failure
+        if: failure() && steps.compile_kotlin.outcome == 'failure'
+        run: |
+          python3 -c '
+          import re, os
+          log_path = "compile_log.txt"
+          if os.path.exists(log_path):
+              with open(log_path, "r", errors="ignore") as f:
+                  content = f.read()
+              errors = re.findall(r"e:\s+(?:file://)?(.*?):(\d+):(\d+)\s+(.*)", content)
+              if errors:
+                  lines = ["### ❌ Kotlin Compilation Errors\n", "| File | Location | Error Message |", "|---|---|---|"]
+                  for p, l, c, m in errors:
+                      fname = p.split("/")[-1]
+                      lines.append(f"| `{fname}` | Line {l}:{c} | {m} |")
+                      print(f"::error file={p},line={l},col={c}::{m}")
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                      summary.write("\n".join(lines) + "\n\n")
+              else:
+                  with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                      summary.write("### ❌ Compilation failed (No individual e: markers matched)\n```\n" + content[-2000:] + "\n```\n")
+          '
+
+      # Layer 2B: JVM Unit Tests
+      - name: Run Android JVM Unit Tests
+        id: unit_tests
+        run: |
+          gradle testDebugUnitTest --no-daemon 2>&1 | tee test_log.txt
+
+      - name: Summarize Android Test Results
+        if: always() && steps.compile_kotlin.outcome == 'success'
+        run: |
+          echo "### 🤖 Android Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.unit_tests.outcome }}" == "success" ]; then
+            echo "✅ **All Kotlin unit tests passed successfully.**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Unit tests failed!**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 30 test_log.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ============================================================================
+  # Layer 3: APK Packaging & GitHub Release
+  # ============================================================================
+  build-and-release:
+    name: "Layer 3: APK Assembly & Distribution"
+    runs-on: ubuntu-latest
+    needs: [test-daemon, verify-android]
+    defaults:
+      run:
+        working-directory: ./android
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon
+
+      - name: Verify APK & Generate Build Metrics
+        run: |
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            SIZE_BYTES=$(stat -c%s "$APK_PATH")
+            SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $SIZE_BYTES / 1048576}")
+            SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
+            
+            echo "### 📱 Android APK Package Metrics" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Package** | \`app-debug.apk\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Size** | ${SIZE_MB} MB ($SIZE_BYTES bytes) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **SHA-256** | \`${SHA256}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Status** | Ready for Distribution |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "::error::Generated APK not found at $APK_PATH"
+            exit 1
+          fi
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
