@@ -50,7 +50,8 @@ class WebSocketServer:
         self.pairing_manager = pairing_manager
         self.allow_browser_origin = allow_browser_origin
         self.heartbeat_seconds = heartbeat_seconds
-        self.clients: Set[web.WebSocketResponse] = set()
+        self.remote_clients: Set[web.WebSocketResponse] = set()
+        self.host_clients: Set[web.WebSocketResponse] = set()
 
         self.app = web.Application()
         self.app.router.add_get("/ws", self.handle_ws)
@@ -59,6 +60,11 @@ class WebSocketServer:
         self.app.router.add_get("/pairing_challenge", self.handle_pairing_challenge)
 
         self.runner: Optional[web.AppRunner] = None
+
+    @property
+    def clients(self) -> Set[web.WebSocketResponse]:
+        """Union of remote mobile clients and local host desktop clients."""
+        return self.remote_clients | self.host_clients
 
     async def handle_health(self, request: web.Request) -> web.Response:
         paired_info = self.pairing_manager.get_paired_info() if self.pairing_manager else None
@@ -109,14 +115,24 @@ class WebSocketServer:
             logger.warning(f"Rejected connection with browser Origin: {origin}")
             return web.Response(status=403, text="Browser origins prohibited for security")
 
-        # 2. Authentication: Cryptographic Device Identity OR Bearer Token Fallback
+        # 2. Authentication: Loopback Host Client OR Cryptographic Device Identity OR Bearer Token
         is_authenticated = False
+        is_loopback = request.remote in ("127.0.0.1", "::1", "localhost")
+        is_host_client = is_loopback and (
+            request.headers.get("X-Host-Client") == "true" or
+            request.query.get("host_client") == "true"
+        )
+
+        if is_host_client:
+            is_authenticated = True
+            logger.info("Authenticated local desktop workstation via loopback")
+
         device_pubkey = request.headers.get("X-Device-Pubkey", "")
         auth_nonce = request.headers.get("X-Auth-Nonce", "")
         auth_signature = request.headers.get("X-Auth-Signature", "")
         auth_totp = request.headers.get("X-Auth-TOTP", None)
 
-        if self.pairing_manager and self.pairing_manager.is_paired and device_pubkey:
+        if not is_authenticated and self.pairing_manager and self.pairing_manager.is_paired and device_pubkey:
             # Factor 1 & 2: Cryptographic ECDSA P-256 + optional TOTP
             ok, reason = self.pairing_manager.verify_auth(
                 pubkey_hex=device_pubkey,
@@ -142,7 +158,7 @@ class WebSocketServer:
 
             if self.token and secrets.compare_digest(token, self.token):
                 is_authenticated = True
-                logger.info("Authenticated mobile client via Bearer token")
+                logger.info("Authenticated client via Bearer token")
 
         if not is_authenticated:
             logger.warning("Rejected unauthenticated WebSocket connection attempt")
@@ -152,19 +168,22 @@ class WebSocketServer:
         ws = web.WebSocketResponse(heartbeat=float(self.heartbeat_seconds))
         await ws.prepare(request)
 
-        # 4. Device Identity Preemption (INV-04)
-        # Forcefully terminate existing stale / half-open socket to prevent ghost lockouts on cellular handover
-        if self.clients:
-            logger.info("New connection from paired device: Preempting stale ghost connection (INV-04)")
-            for old_ws in list(self.clients):
-                try:
-                    await old_ws.close(code=1000, message=b"Superseded by new connection")
-                except Exception:
-                    pass
-            self.clients.clear()
-
-        self.clients.add(ws)
-        logger.info(f"Mobile client connected (Active: {len(self.clients)})")
+        # 4. Client Registration & Device Identity Preemption (INV-04)
+        if is_host_client:
+            self.host_clients.add(ws)
+            logger.info(f"Host desktop workstation connected (Active host: {len(self.host_clients)}, remote: {len(self.remote_clients)})")
+        else:
+            # Forcefully terminate stale mobile socket to prevent ghost lockouts on cellular handover
+            if self.remote_clients:
+                logger.info("New connection from paired device: Preempting stale ghost connection (INV-04)")
+                for old_ws in list(self.remote_clients):
+                    try:
+                        await old_ws.close(code=1000, message=b"Superseded by new connection")
+                    except Exception:
+                        pass
+                self.remote_clients.clear()
+            self.remote_clients.add(ws)
+            logger.info(f"Mobile client connected (Active remote: {len(self.remote_clients)}, host: {len(self.host_clients)})")
 
         try:
             # 5. Immediate state hydration from circular ring buffer
@@ -186,6 +205,14 @@ class WebSocketServer:
                             seq = VT_KEY_MAP.get(key, key)
                             logger.info(f"Received RAW_KEY: {key} -> VT {repr(seq)}")
                             self.on_input(seq)
+
+                        elif msg_type == "STREAM_INPUT":
+                            data = payload.get("data", "")
+                            if data:
+                                # Translate Del/Backspace \x7f to ConPTY BS \x08
+                                if data == "\x7f":
+                                    data = "\x08"
+                                self.on_input(data)
 
                         elif msg_type == "TEXT_INPUT":
                             text = payload.get("text", "")
@@ -220,8 +247,12 @@ class WebSocketServer:
                     logger.warning(f"WebSocket closed with error: {ws.exception()}")
 
         finally:
-            self.clients.discard(ws)
-            logger.info(f"Mobile client disconnected (Active: {len(self.clients)})")
+            if is_host_client:
+                self.host_clients.discard(ws)
+                logger.info(f"Host desktop workstation disconnected (Active host: {len(self.host_clients)})")
+            else:
+                self.remote_clients.discard(ws)
+                logger.info(f"Mobile client disconnected (Active remote: {len(self.remote_clients)})")
 
         return ws
 
