@@ -38,6 +38,11 @@ class TokenStorage(context: Context) {
                 cleaned = cleaned.substring(0, delimiterIndex).trim()
             }
 
+            // In case of multiple colons or leftover port attachments
+            if (cleaned.contains(':')) {
+                cleaned = cleaned.substringBefore(':').trim()
+            }
+
             // Remove any leftover whitespace or control characters
             cleaned = cleaned.filterNot { it.isWhitespace() }
 
@@ -92,6 +97,18 @@ class TokenStorage(context: Context) {
         get() = sanitizeToken(prefs.getString("auth_token", "") ?: "")
         set(value) = prefs.edit().putString("auth_token", sanitizeToken(value)).apply()
 
+    var isPaired: Boolean
+        get() = prefs.getBoolean("is_paired", false)
+        set(value) = prefs.edit().putBoolean("is_paired", value).apply()
+
+    var totpSecret: String
+        get() = prefs.getString("totp_secret", "") ?: ""
+        set(value) = prefs.edit().putString("totp_secret", value).apply()
+
+    var deviceId: String
+        get() = prefs.getString("device_id", "") ?: ""
+        set(value) = prefs.edit().putString("device_id", value).apply()
+
     var ntfyTopic: String
         get() = sanitizeNtfyTopic(prefs.getString("ntfy_topic", "") ?: "")
         set(value) = prefs.edit().putString("ntfy_topic", sanitizeNtfyTopic(value)).apply()
@@ -99,12 +116,35 @@ class TokenStorage(context: Context) {
     val isConfigured: Boolean
         get() {
             val currentHost = host
-            return authToken.isNotBlank() &&
+            val hasAuth = isPaired || authToken.isNotBlank()
+            return hasAuth &&
                     currentHost.isNotBlank() &&
                     currentHost != DEFAULT_HOST &&
                     !currentHost.contains(" ") &&
                     port in 1..65535
         }
+
+    fun savePairingConfig(
+        hostAddress: String,
+        portNumber: Int,
+        secret: String,
+        devId: String
+    ) {
+        val (cleanedHost, extractedPort) = sanitizeHost(hostAddress)
+        host = cleanedHost
+        port = if (portNumber in 1..65535) portNumber else (extractedPort ?: DEFAULT_PORT)
+        totpSecret = secret
+        deviceId = devId
+        isPaired = true
+    }
+
+    fun clearPairing() {
+        prefs.edit()
+            .putBoolean("is_paired", false)
+            .remove("totp_secret")
+            .remove("device_id")
+            .apply()
+    }
 
     fun saveConfig(
         rawHost: String,

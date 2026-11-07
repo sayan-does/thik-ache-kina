@@ -2,7 +2,7 @@ package com.agentremote
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
+import com.agentremote.data.BiometricAuthManager
 import com.agentremote.data.TokenStorage
 import com.agentremote.ui.home.HomeScreen
 import com.agentremote.ui.terminal.TerminalScreen
@@ -17,13 +19,15 @@ import com.agentremote.ui.terminal.TerminalViewModel
 import com.agentremote.ui.theme.AgentRemoteTheme
 import com.agentremote.ui.theme.CanvasDark
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val terminalViewModel: TerminalViewModel by viewModels()
     private lateinit var tokenStorage: TokenStorage
+    private lateinit var biometricAuthManager: BiometricAuthManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tokenStorage = TokenStorage(this)
+        biometricAuthManager = BiometricAuthManager(this)
 
         val startScreen = if (isDeepLinkIntent(intent) && tokenStorage.isConfigured) {
             Screen.Terminal
@@ -45,16 +49,31 @@ class MainActivity : ComponentActivity() {
                         currentScreen = Screen.Home
                     }
 
+                    fun authenticateAndOpenTerminal() {
+                        if (!tokenStorage.isConfigured) {
+                            Toast.makeText(this@MainActivity, "Host not paired or configured", Toast.LENGTH_SHORT).show()
+                            return
+                        }
+
+                        biometricAuthManager.promptBiometric(
+                            onSuccess = {
+                                terminalViewModel.connect()
+                                currentScreen = Screen.Terminal
+                            },
+                            onError = { err ->
+                                Toast.makeText(this@MainActivity, "Auth failed: $err", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+
                     when (currentScreen) {
                         Screen.Home -> {
                             HomeScreen(
                                 agentState = agentState,
                                 tokenStorage = tokenStorage,
+                                viewModel = terminalViewModel,
                                 onOpenTerminal = {
-                                    if (tokenStorage.isConfigured) {
-                                        terminalViewModel.connect()
-                                    }
-                                    currentScreen = Screen.Terminal
+                                    authenticateAndOpenTerminal()
                                 }
                             )
                         }
@@ -84,7 +103,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Re-establish connection when app is opened in foreground, if configured
         if (::tokenStorage.isInitialized && tokenStorage.isConfigured) {
             terminalViewModel.connect()
         }
@@ -92,7 +110,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Clean disconnect after idle to conserve battery
         terminalViewModel.disconnect()
     }
 }

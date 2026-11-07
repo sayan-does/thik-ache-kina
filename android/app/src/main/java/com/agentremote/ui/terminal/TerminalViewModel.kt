@@ -2,16 +2,15 @@ package com.agentremote.ui.terminal
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import com.agentremote.data.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class TerminalViewModel(application: Application) : AndroidViewModel(application), BridgeClient.BridgeListener {
     private val tokenStorage = TokenStorage(application)
-    private val bridgeClient = BridgeClient(tokenStorage, this)
+    private val deviceIdentityManager = DeviceIdentityManager(application)
+    private val bridgeClient = BridgeClient(tokenStorage, deviceIdentityManager, this)
 
     private val _agentState = MutableStateFlow(AgentState.DISCONNECTED)
     val agentState: StateFlow<AgentState> = _agentState.asStateFlow()
@@ -42,6 +41,26 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         bridgeClient.disconnect()
     }
 
+    fun pairDevice(
+        host: String,
+        port: Int,
+        nonce: String,
+        totpSecret: String,
+        callback: (Boolean, String?) -> Unit
+    ) {
+        bridgeClient.pairDevice(host, port, nonce, totpSecret) { success, message ->
+            if (success) {
+                connect()
+            }
+            callback(success, message)
+        }
+    }
+
+    fun clearPairing() {
+        tokenStorage.clearPairing()
+        disconnect()
+    }
+
     fun sendOption(key: String) {
         bridgeClient.sendTextInput(key)
         _activePrompt.value = null
@@ -53,6 +72,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     fun sendText(text: String) {
         bridgeClient.sendTextInput(text)
+    }
+
+    fun requestRefresh() {
+        bridgeClient.requestBufferRefresh()
     }
 
     fun dismissPrompt() {

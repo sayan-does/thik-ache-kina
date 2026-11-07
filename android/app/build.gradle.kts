@@ -11,8 +11,8 @@ android {
         applicationId = "com.agentremote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -73,6 +73,9 @@ dependencies {
 
     // Local WebView for xterm.js
     implementation("androidx.webkit:webkit:1.11.0")
+
+    // Biometric MFA
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
     // Unit Testing
     testImplementation("junit:junit:4.13.2")

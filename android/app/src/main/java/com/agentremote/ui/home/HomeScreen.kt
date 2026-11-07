@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +27,7 @@ import com.agentremote.data.AgentState
 import com.agentremote.data.TokenStorage
 import com.agentremote.ui.components.LivePulsePill
 import com.agentremote.ui.components.UpdateCard
+import com.agentremote.ui.terminal.TerminalViewModel
 import com.agentremote.ui.theme.*
 import org.json.JSONObject
 
@@ -34,12 +36,14 @@ import org.json.JSONObject
 fun HomeScreen(
     agentState: AgentState,
     tokenStorage: TokenStorage,
+    viewModel: TerminalViewModel,
     onOpenTerminal: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var isSettingsOpen by remember { mutableStateOf(!tokenStorage.isConfigured) }
+    var isPairingInProgress by remember { mutableStateOf(false) }
 
     var hostInput by remember { mutableStateOf(tokenStorage.host) }
     var portInput by remember { mutableStateOf(tokenStorage.port.toString()) }
@@ -59,7 +63,7 @@ fun HomeScreen(
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "CLI Terminal & Triage Controller",
+                            text = "CLI Terminal & Triage Controller v2.0",
                             color = TextMuted,
                             fontSize = 11.sp,
                             fontFamily = TerminalFontFamily
@@ -111,19 +115,39 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "TARGET HOST",
-                            color = TextMuted,
-                            fontSize = 10.sp,
-                            fontFamily = TerminalFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "TARGET HOST",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontFamily = TerminalFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
+                            )
+                            if (tokenStorage.isPaired) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(AccentEmerald.copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "PAIRED (ECDSA)",
+                                        color = AccentEmerald,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = TerminalFontFamily
+                                    )
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(3.dp))
                         val displayHost = if (tokenStorage.isConfigured) {
-                            if (tokenStorage.host.contains(":")) tokenStorage.host else "${tokenStorage.host}:${tokenStorage.port}"
+                            "${tokenStorage.host}:${tokenStorage.port}"
                         } else {
-                            "Unconfigured"
+                            "Not Paired / Configured"
                         }
                         Text(
                             text = displayHost,
@@ -162,14 +186,14 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Terminal Stream & Triage",
+                        text = "Terminal Agency & Triage",
                         color = TextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Live ANSI output, interactive approval cards, and remote terminal controls for AGY, OpenCode, and Claude Code.",
+                        text = "Hardware-authenticated ConPTY terminal session with instant numeric choice approvals and full terminal agency.",
                         color = TextSecondary,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
@@ -197,7 +221,7 @@ fun HomeScreen(
             // Software Update Section
             UpdateCard(currentVersion = BuildConfig.VERSION_NAME)
 
-            // Quick Launch Host Guide
+            // Quick Host Launch Guide
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,7 +231,7 @@ fun HomeScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "HOST LAUNCH COMMAND",
+                        text = "HOST CONTROLLER STATUS",
                         color = TextMuted,
                         fontSize = 10.sp,
                         fontFamily = TerminalFontFamily,
@@ -216,13 +240,13 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Run on your laptop PowerShell:",
+                        text = "Run on laptop to launch background daemon & system tray:",
                         color = TextSecondary,
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val cmdText = "python bridge.py -- agy \"build login page\""
+                    val cmdText = "cd agent-bridge ; .\\start-remote.bat"
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -231,7 +255,7 @@ fun HomeScreen(
                             .padding(10.dp)
                     ) {
                         Text(
-                            text = "$ $cmdText\n$ python bridge.py -- opencode\n$ python bridge.py -- claude",
+                            text = "$ $cmdText\n# Tray popover manages QR pairing & ConPTY sessions",
                             color = AccentCyan,
                             fontSize = 11.sp,
                             fontFamily = TerminalFontFamily,
@@ -270,13 +294,13 @@ fun HomeScreen(
         }
     }
 
-    // Host Settings Dialog
+    // Host Settings & Pairing Dialog
     if (isSettingsOpen) {
         AlertDialog(
             onDismissRequest = { isSettingsOpen = false },
             title = {
                 Text(
-                    text = "Host Configuration",
+                    text = if (tokenStorage.isPaired) "Device Pairing & Host" else "Pair Mobile Device",
                     color = TextPrimary,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
@@ -289,77 +313,91 @@ fun HomeScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Clipboard Import Button
-                    FilledTonalButton(
+                    // Fast Pairing from Clipboard
+                    Button(
                         onClick = {
                             val clipText = clipboardManager.getText()?.text?.trim()
                             if (clipText.isNullOrEmpty()) {
                                 Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
-                            } else {
-                                var parsedAny = false
-                                if (clipText.startsWith("{") && clipText.endsWith("}")) {
-                                    try {
-                                        val json = JSONObject(clipText)
-                                        if (json.has("host")) {
-                                            val (h, p) = TokenStorage.sanitizeHost(json.getString("host"))
-                                            hostInput = h
-                                            if (p != null) portInput = p.toString()
-                                            parsedAny = true
-                                        }
-                                        if (json.has("port")) {
-                                            portInput = json.getInt("port").toString()
-                                            parsedAny = true
-                                        }
-                                        if (json.has("token")) {
-                                            tokenInput = TokenStorage.sanitizeToken(json.getString("token"))
-                                            parsedAny = true
-                                        }
-                                        if (json.has("ntfy")) {
-                                            ntfyInput = TokenStorage.sanitizeNtfyTopic(json.getString("ntfy"))
-                                            parsedAny = true
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-
-                                if (!parsedAny) {
-                                    if (clipText.contains("://") || clipText.contains(":") || clipText.contains(";")) {
-                                        val (h, p) = TokenStorage.sanitizeHost(clipText)
-                                        if (h.isNotBlank() && h != TokenStorage.DEFAULT_HOST) {
-                                            hostInput = h
-                                            if (p != null) portInput = p.toString()
-                                            parsedAny = true
-                                        }
-                                    } else if (clipText.length >= 8 && !clipText.contains(" ")) {
-                                        tokenInput = TokenStorage.sanitizeToken(clipText)
-                                        parsedAny = true
-                                    }
-                                }
-
-                                if (parsedAny) {
-                                    Toast.makeText(context, "Configuration imported", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    val (h, p) = TokenStorage.sanitizeHost(clipText)
-                                    hostInput = h
-                                    if (p != null) portInput = p.toString()
-                                    Toast.makeText(context, "Host imported", Toast.LENGTH_SHORT).show()
-                                }
+                                return@Button
                             }
+
+                            if (clipText.startsWith("{") && clipText.endsWith("}")) {
+                                try {
+                                    val json = JSONObject(clipText)
+                                    if (json.has("nonce") && json.has("host")) {
+                                        isPairingInProgress = true
+                                        val host = json.getString("host")
+                                        val port = json.optInt("port", 8765)
+                                        val nonce = json.getString("nonce")
+                                        val totp = json.optString("totp_secret", json.optString("totp", ""))
+
+                                        viewModel.pairDevice(host, port, nonce, totp) { success, msg ->
+                                            isPairingInProgress = false
+                                            if (success) {
+                                                Toast.makeText(context, "Hardware Device Paired Successfully!", Toast.LENGTH_LONG).show()
+                                                isSettingsOpen = false
+                                            } else {
+                                                Toast.makeText(context, "Pairing Failed: $msg", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                        return@Button
+                                    }
+                                } catch (_: Exception) {}
+                            }
+
+                            // Fallback manual import
+                            val (h, p) = TokenStorage.sanitizeHost(clipText)
+                            hostInput = h
+                            if (p != null) portInput = p.toString()
+                            Toast.makeText(context, "Host imported from clipboard", Toast.LENGTH_SHORT).show()
                         },
+                        enabled = !isPairingInProgress,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(40.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceElevated),
+                            .height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ContentPaste,
-                            contentDescription = "Paste",
-                            tint = AccentCyan,
+                            imageVector = Icons.Default.Key,
+                            contentDescription = "Pair",
+                            tint = CanvasDark,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Paste from Clipboard", color = AccentCyan, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isPairingInProgress) "Pairing..." else "Pair via Clipboard Payload",
+                            color = CanvasDark,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
                     }
+
+                    if (tokenStorage.isPaired) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.clearPairing()
+                                Toast.makeText(context, "Device unshared / pairing cleared", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentCrimson),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentCrimson.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("Revoke Device Pairing", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    HorizontalDivider(color = BorderDark, modifier = Modifier.padding(vertical = 4.dp))
+
+                    Text(
+                        text = "MANUAL HOST OVERRIDE",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontFamily = TerminalFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
 
                     OutlinedTextField(
                         value = hostInput,
@@ -401,7 +439,7 @@ fun HomeScreen(
                     OutlinedTextField(
                         value = tokenInput,
                         onValueChange = { tokenInput = TokenStorage.sanitizeToken(it) },
-                        label = { Text("Bearer Auth Token") },
+                        label = { Text("Bearer Auth Token (Legacy)") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -435,7 +473,8 @@ fun HomeScreen(
                             rawNtfy = ntfyInput
                         )
                         isSettingsOpen = false
-                        Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+                        viewModel.connect()
+                        Toast.makeText(context, "Saved & Connecting", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
                     shape = RoundedCornerShape(6.dp)

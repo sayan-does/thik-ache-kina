@@ -1,16 +1,20 @@
 package com.agentremote.data
 
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.json.JSONArray
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class BridgeClient(
     private val tokenStorage: TokenStorage,
+    private val deviceIdentityManager: DeviceIdentityManager,
     private val listener: BridgeListener
 ) {
     interface BridgeListener {
@@ -52,7 +56,6 @@ class BridgeClient(
 
         val host = tokenStorage.host
         val port = tokenStorage.port
-        val token = tokenStorage.authToken
 
         // Zero-crash validation using HttpUrl
         val validatedHttpUrl: HttpUrl? = try {
@@ -76,11 +79,24 @@ class BridgeClient(
         }
 
         val wsUrl = "ws://${validatedHttpUrl.host}:${validatedHttpUrl.port}${validatedHttpUrl.encodedPath}"
+        val requestBuilder = Request.Builder().url(wsUrl)
+
+        if (tokenStorage.isPaired) {
+            val nonce = "${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().replace("-", "")}"
+            val sigHex = deviceIdentityManager.signChallengeHex(nonce.toByteArray(Charsets.UTF_8))
+            val pubkeyHex = deviceIdentityManager.getPublicKeyHex()
+            requestBuilder
+                .addHeader("X-Device-Id", tokenStorage.deviceId)
+                .addHeader("X-Device-Pubkey", pubkeyHex)
+                .addHeader("X-Auth-Nonce", nonce)
+                .addHeader("X-Auth-Signature", sigHex)
+        } else {
+            val token = tokenStorage.authToken
+            requestBuilder.addHeader("Authorization", "Bearer $token")
+        }
+
         val request = try {
-            Request.Builder()
-                .url(wsUrl)
-                .addHeader("Authorization", "Bearer $token")
-                .build()
+            requestBuilder.build()
         } catch (e: Exception) {
             Log.e(tag, "Failed to create OkHttp Request for $wsUrl: ${e.message}")
             handler.post {
@@ -160,8 +176,6 @@ class BridgeClient(
     private fun scheduleReconnect() {
         if (isManuallyClosed || !tokenStorage.isConfigured) return
 
-        // Prevent exponential backoff integer shift overflow
-        // retryAttempt is incremented, and shift is safely clamped [0..4] (1s, 2s, 4s, 8s, 16s)
         retryAttempt++
         val shift = (retryAttempt - 1).coerceIn(0, 4)
         val delayMs = (1 shl shift) * 1000L
@@ -251,6 +265,50 @@ class BridgeClient(
         }
     }
 
+    fun pairDevice(
+        rawHost: String,
+        port: Int,
+        nonceHex: String,
+        totpSecret: String,
+        callback: (success: Boolean, message: String?) -> Unit
+    ) {
+        val (cleanedHost, extractedPort) = TokenStorage.sanitizeHost(rawHost)
+        val finalPort = if (port in 1..65535) port else (extractedPort ?: 8765)
+        val nonceBytes = DeviceIdentityManager.hexToBytes(nonceHex)
+        val signatureHex = deviceIdentityManager.signChallengeHex(nonceBytes)
+        val pubkeyHex = deviceIdentityManager.getPublicKeyHex()
+        val deviceId = deviceIdentityManager.getDeviceId()
+        val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+
+        val jsonBody = JSONObject().apply {
+            put("device_id", deviceId)
+            put("public_key", pubkeyHex)
+            put("signature", signatureHex)
+            put("device_name", deviceName)
+        }
+
+        val request = Request.Builder()
+            .url("http://$cleanedHost:$finalPort/pair")
+            .post(jsonBody.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                handler.post { callback(false, e.message ?: "Connection failed") }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val bodyStr = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    tokenStorage.savePairingConfig(cleanedHost, finalPort, totpSecret, deviceId)
+                    handler.post { callback(true, null) }
+                } else {
+                    handler.post { callback(false, "Pairing rejected (${response.code}): $bodyStr") }
+                }
+            }
+        })
+    }
+
     fun sendRawKey(key: String) {
         val msg = JSONObject().apply {
             put("type", "RAW_KEY")
@@ -272,6 +330,13 @@ class BridgeClient(
             put("type", "RESIZE")
             put("rows", rows)
             put("cols", cols)
+        }
+        webSocket?.send(msg.toString())
+    }
+
+    fun requestBufferRefresh() {
+        val msg = JSONObject().apply {
+            put("type", "REQUEST_REFRESH")
         }
         webSocket?.send(msg.toString())
     }

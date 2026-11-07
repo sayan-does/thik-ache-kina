@@ -65,16 +65,16 @@ fun SplitThumbBar(
             .fillMaxWidth()
             .background(SurfaceDark)
             .border(1.dp, BorderDark, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            .padding(12.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         // Feedback Pill if Ctrl+C pressed
         AnimatedVisibility(visible = ctrlCMessage != null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
+                    .padding(bottom = 6.dp)
                     .background(AccentCrimsonMuted, RoundedCornerShape(4.dp))
-                    .padding(vertical = 6.dp, horizontal = 10.dp),
+                    .padding(vertical = 4.dp, horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -88,21 +88,55 @@ fun SplitThumbBar(
             }
         }
 
-        // Row 1: Split Thumb Zone (Left: Arrow Navigation | Right: Space / Enter)
+        // Row 1: Tactical Agent Triage Row ([1], [2], [3], [TAB], [ESC], [⌫])
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TriageMiniButton("[1]", isAccent = true, modifier = Modifier.weight(1f), onClick = {
+                triggerHaptic(25)
+                onSendText("1")
+            })
+            TriageMiniButton("[2]", isAccent = true, modifier = Modifier.weight(1f), onClick = {
+                triggerHaptic(25)
+                onSendText("2")
+            })
+            TriageMiniButton("[3]", isAccent = true, modifier = Modifier.weight(1f), onClick = {
+                triggerHaptic(25)
+                onSendText("3")
+            })
+            TriageMiniButton("TAB", modifier = Modifier.weight(1.1f), onClick = {
+                triggerHaptic(20)
+                onRawKey("TAB")
+            })
+            TriageMiniButton("ESC", modifier = Modifier.weight(1.1f), onClick = {
+                triggerHaptic(20)
+                onRawKey("ESC")
+            })
+            TriageMiniButton("⌫", modifier = Modifier.weight(1f), onClick = {
+                triggerHaptic(20)
+                onRawKey("BACKSPACE")
+            })
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Row 2: Split Thumb Navigation Zone (Left: Arrows | Right: Space & Enter)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Left Thumb (Arrow Up, Arrow Down)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 NavIconButton(
                     icon = {
                         Icon(
                             imageVector = Icons.Default.KeyboardArrowUp,
                             contentDescription = "Up",
                             tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     },
                     onClick = {
@@ -116,7 +150,7 @@ fun SplitThumbBar(
                             imageVector = Icons.Default.KeyboardArrowDown,
                             contentDescription = "Down",
                             tint = TextPrimary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     },
                     onClick = {
@@ -127,14 +161,14 @@ fun SplitThumbBar(
             }
 
             // Right Thumb (SPACE, ENTER)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyButton(label = "SPACE", minWidth = 76.dp, onClick = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                KeyButton(label = "SPACE", minWidth = 72.dp, onClick = {
                     triggerHaptic(20)
                     onRawKey("SPACE")
                 })
                 KeyButton(
                     label = "ENTER",
-                    minWidth = 76.dp,
+                    minWidth = 72.dp,
                     isPrimary = true,
                     onClick = {
                         triggerHaptic(30)
@@ -144,19 +178,19 @@ fun SplitThumbBar(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        // Row 2: Custom Text Prompt Bar & Protected Ctrl+C Latch
+        // Row 3: Custom Text Prompt Bar & Protected Ctrl+C Latch
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Collapsed Text Input Pill
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .height(40.dp)
+                    .height(38.dp)
                     .background(SurfaceElevated, RoundedCornerShape(6.dp))
                     .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
                     .clickable { isTextDialogOpen = true }
@@ -168,12 +202,12 @@ fun SplitThumbBar(
                     imageVector = Icons.Default.Keyboard,
                     contentDescription = "Keyboard",
                     tint = TextMuted,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
                 Text(
                     text = "Custom input...",
                     color = TextMuted,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontFamily = TerminalFontFamily
                 )
             }
@@ -181,8 +215,8 @@ fun SplitThumbBar(
             // Protected Ctrl+C Latch (Requires 400ms Hold or informs user)
             Box(
                 modifier = Modifier
-                    .height(40.dp)
-                    .width(96.dp)
+                    .height(38.dp)
+                    .width(92.dp)
                     .background(AccentCrimsonMuted.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
                     .border(1.dp, AccentCrimson.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
                     .pointerInput(Unit) {
@@ -275,14 +309,46 @@ fun SplitThumbBar(
 }
 
 @Composable
+private fun TriageMiniButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isAccent: Boolean = false
+) {
+    Box(
+        modifier = modifier
+            .height(34.dp)
+            .background(
+                if (isAccent) AccentEmerald.copy(alpha = 0.12f) else SurfaceElevated,
+                RoundedCornerShape(5.dp)
+            )
+            .border(
+                1.dp,
+                if (isAccent) AccentEmerald.copy(alpha = 0.45f) else BorderDark,
+                RoundedCornerShape(5.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (isAccent) AccentEmerald else TextPrimary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = TerminalFontFamily
+        )
+    }
+}
+
+@Composable
 private fun NavIconButton(
     icon: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .height(44.dp)
-            .width(52.dp)
+            .height(38.dp)
+            .width(48.dp)
             .background(SurfaceElevated, RoundedCornerShape(6.dp))
             .border(1.dp, BorderHighlight, RoundedCornerShape(6.dp))
             .clickable { onClick() },
@@ -301,7 +367,7 @@ private fun KeyButton(
 ) {
     Box(
         modifier = Modifier
-            .height(44.dp)
+            .height(38.dp)
             .widthIn(min = minWidth)
             .background(
                 if (isPrimary) AccentEmerald else SurfaceElevated,
@@ -313,7 +379,7 @@ private fun KeyButton(
                 RoundedCornerShape(6.dp)
             )
             .clickable { onClick() }
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
