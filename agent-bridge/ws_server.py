@@ -100,18 +100,25 @@ class WebSocketServer:
                         if msg_type == "RAW_KEY":
                             key = payload.get("key", "")
                             seq = VT_KEY_MAP.get(key, key)
+                            logger.info(f"Received RAW_KEY from client: {key} -> VT {repr(seq)}")
                             self.on_input(seq)
 
                         elif msg_type == "TEXT_INPUT":
                             text = payload.get("text", "")
-                            self.on_input(text + "\r\n")
+                            # In ConPTY on Windows (PowerShell/PSReadLine), Enter is strictly '\r'
+                            # Appending '\r\n' triggers multiline continuation mode ('>>')
+                            clean_text = text.rstrip("\r\n") + "\r"
+                            logger.info(f"Received TEXT_INPUT from client: {repr(text)} -> writing {repr(clean_text)}")
+                            self.on_input(clean_text)
 
                         elif msg_type == "RESIZE":
                             rows = int(payload.get("rows", 32))
                             cols = int(payload.get("cols", 90))
+                            logger.info(f"Client requested terminal RESIZE: {cols}x{rows}")
                             self.on_resize(rows, cols)
 
                         elif msg_type == "DISMISS_PROMPT":
+                            logger.info("Client requested DISMISS_PROMPT")
                             self.on_dismiss_prompt()
                             await self.broadcast_state()
 

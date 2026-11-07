@@ -97,7 +97,10 @@ class ConPtyBridge:
     def write(self, data: str):
         """Writes raw string or ANSI escape sequences directly to stdin."""
         if self._proc and self._proc.isalive():
+            logger.info(f"ConPTY stdin write ({len(data)} chars): {repr(data)}")
             self._proc.write(data)
+        else:
+            logger.warning(f"ConPTY write failed: process is not alive")
 
     def resize(self, rows: int, cols: int):
         """Resizes the ConPTY grid geometry when mobile client dimensions change."""

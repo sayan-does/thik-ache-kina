@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Terminal</title>
+    <title>Agent Remote Terminal</title>
+    <link rel="stylesheet" href="xterm.min.css">
     <style>
         * {
             margin: 0;
@@ -15,39 +16,22 @@
             height: 100%;
             background-color: #0A0B0E;
             overflow: hidden;
-            font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+            font-family: 'JetBrains Mono', 'Roboto Mono', 'SF Pro Mono', monospace;
         }
         #terminal-container {
             width: 100%;
             height: 100%;
-            padding: 8px;
+            padding: 4px 6px;
             overflow: hidden;
         }
         .xterm {
-            font-feature-settings: "liga" 0;
-            position: relative;
-            user-select: none;
-            -ms-user-select: none;
-            -webkit-user-select: none;
-        }
-        .xterm-screen {
-            position: relative;
-        }
-        .xterm-screen canvas {
-            position: absolute;
-            left: 0;
-            top: 0;
+            height: 100%;
         }
         .xterm .xterm-viewport {
-            overflow-y: scroll;
-            cursor: default;
-            position: absolute;
-            right: 0;
-            left: 0;
-            top: 0;
-            bottom: 0;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
         }
-        /* Custom scrollbar matching dark theme */
+        /* Anti-slop custom scrollbar */
         ::-webkit-scrollbar {
             width: 4px;
         }
@@ -59,65 +43,112 @@
             border-radius: 2px;
         }
     </style>
-    <!-- Embedded minimal xterm.js bundle for zero-dependency offline rendering -->
-    <script src="xterm.js"></script>
+    <script src="xterm.min.js"></script>
+    <script src="addon-fit.min.js"></script>
 </head>
 <body>
     <div id="terminal-container"></div>
     <script>
-        let term;
+        let term = null;
+        let fitAddon = null;
+        const pendingQueue = [];
+        let isReady = false;
 
         function initTerminal() {
-            term = new Terminal({
-                theme: {
-                    background: '#0A0B0E',
-                    foreground: '#F0F3F6',
-                    cursor: '#38BDF8',
-                    cursorAccent: '#0A0B0E',
-                    selectionBackground: '#1E293B',
-                    black: '#0A0B0E',
-                    red: '#F43F5E',
-                    green: '#00E599',
-                    yellow: '#F59E0B',
-                    blue: '#38BDF8',
-                    magenta: '#A855F7',
-                    cyan: '#38BDF8',
-                    white: '#F0F3F6',
-                    brightBlack: '#555C68',
-                    brightRed: '#FB7185',
-                    brightGreen: '#34D399',
-                    brightYellow: '#FBBF24',
-                    brightBlue: '#60A5FA',
-                    brightMagenta: '#C084FC',
-                    brightCyan: '#67E8F9',
-                    brightWhite: '#FFFFFF'
-                },
-                fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace",
-                fontSize: 12,
-                lineHeight: 1.25,
-                cursorBlink: true,
-                convertEol: true,
-                scrollback: 1000
-            });
-
-            term.open(document.getElementById('terminal-container'));
-
-            // Notify Android of initial geometry
-            if (window.AndroidInterface && window.AndroidInterface.onGeometry) {
-                window.AndroidInterface.onGeometry(term.rows, term.cols);
-            }
-
-            window.addEventListener('resize', () => {
-                if (window.AndroidInterface && window.AndroidInterface.onGeometry) {
-                    window.AndroidInterface.onGeometry(term.rows, term.cols);
+            try {
+                if (typeof Terminal === 'undefined') {
+                    console.error("XTerm library not loaded");
+                    return;
                 }
-            });
+
+                term = new Terminal({
+                    theme: {
+                        background: '#0A0B0E',
+                        foreground: '#F0F3F6',
+                        cursor: '#38BDF8',
+                        cursorAccent: '#0A0B0E',
+                        selectionBackground: '#1E293B',
+                        black: '#0A0B0E',
+                        red: '#F43F5E',
+                        green: '#00E599',
+                        yellow: '#F59E0B',
+                        blue: '#38BDF8',
+                        magenta: '#A855F7',
+                        cyan: '#38BDF8',
+                        white: '#F0F3F6',
+                        brightBlack: '#555C68',
+                        brightRed: '#FB7185',
+                        brightGreen: '#34D399',
+                        brightYellow: '#FBBF24',
+                        brightBlue: '#60A5FA',
+                        brightMagenta: '#C084FC',
+                        brightCyan: '#67E8F9',
+                        brightWhite: '#FFFFFF'
+                    },
+                    fontFamily: "'JetBrains Mono', 'Roboto Mono', 'SF Pro Mono', monospace",
+                    fontSize: 11,
+                    lineHeight: 1.22,
+                    cursorBlink: true,
+                    convertEol: true,
+                    scrollback: 3000,
+                    allowProposedApi: true
+                });
+
+                if (window.FitAddon && window.FitAddon.FitAddon) {
+                    fitAddon = new window.FitAddon.FitAddon();
+                    term.loadAddon(fitAddon);
+                }
+
+                const container = document.getElementById('terminal-container');
+                term.open(container);
+
+                if (fitAddon) {
+                    try {
+                        fitAddon.fit();
+                    } catch (e) {
+                        console.warn("Initial fit error:", e);
+                    }
+                }
+
+                isReady = true;
+
+                // Flush any writes that arrived during initialization
+                while (pendingQueue.length > 0) {
+                    const chunk = pendingQueue.shift();
+                    term.write(chunk);
+                }
+
+                // Notify Android bridge that terminal is ready and report geometry
+                if (window.AndroidInterface) {
+                    if (window.AndroidInterface.onReady) {
+                        window.AndroidInterface.onReady();
+                    }
+                    if (window.AndroidInterface.onGeometry) {
+                        window.AndroidInterface.onGeometry(term.rows, term.cols);
+                    }
+                }
+
+                window.addEventListener('resize', () => {
+                    if (fitAddon) {
+                        try {
+                            fitAddon.fit();
+                            if (window.AndroidInterface && window.AndroidInterface.onGeometry) {
+                                window.AndroidInterface.onGeometry(term.rows, term.cols);
+                            }
+                        } catch (e) {}
+                    }
+                });
+
+            } catch (err) {
+                console.error("Error initializing xterm:", err);
+            }
         }
 
-        // Bridge methods called by Android Kotlin
         window.writeTerminal = function(data) {
-            if (term) {
+            if (isReady && term) {
                 term.write(data);
+            } else {
+                pendingQueue.push(data);
             }
         };
 
@@ -125,9 +156,14 @@
             if (term) {
                 term.clear();
             }
+            pendingQueue.length = 0;
         };
 
-        window.onload = initTerminal;
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTerminal);
+        } else {
+            initTerminal();
+        }
     </script>
 </body>
 </html>

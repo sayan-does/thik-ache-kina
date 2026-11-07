@@ -182,6 +182,13 @@ class BridgeDaemon:
             # Broadcast chunk to mobile clients
             await self.ws_server.broadcast_chunk(chunk)
 
+            # Live mirror chunk to host stdout so user on laptop sees live terminal output
+            try:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+            except Exception:
+                pass
+
             # Analyze for prompts
             prompt = self.prompt_detector.analyze(accumulated_window)
             if prompt and self.ring_buffer.state != AgentState.WAITING_FOR_INPUT:
