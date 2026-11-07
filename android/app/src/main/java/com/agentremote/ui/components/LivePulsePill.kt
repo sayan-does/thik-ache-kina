@@ -4,6 +4,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,93 +21,102 @@ import com.agentremote.ui.theme.*
 
 @Composable
 fun LivePulsePill(state: AgentState, modifier: Modifier = Modifier) {
-    // 2.5s gentle pulse animation for thinking/running
+    // 2.5s calm breathing pulse for live operations
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alphaAnim by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1250, easing = FastOutSlowInEasing),
+            animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "alpha"
+        label = "dotAlpha"
     )
 
-    val (bgColor, borderColor, textColor, text, isPulsing) = when (state) {
-        AgentState.WAITING_FOR_INPUT -> Tuple5(
-            AccentAmberMuted.copy(alpha = 0.5f),
+    val (bgTint, borderTint, ledColor, labelText, isPulsing) = when (state) {
+        AgentState.WAITING_FOR_INPUT -> StatusConfig(
+            AccentAmberMuted.copy(alpha = 0.4f),
+            AccentAmber.copy(alpha = 0.8f),
             AccentAmber,
-            AccentAmber,
-            "ACTION REQUIRED ⚠️",
+            "ACTION REQUIRED",
             true
         )
-        AgentState.RUNNING -> Tuple5(
-            SurfaceElevated,
-            AccentCyan.copy(alpha = 0.5f),
-            AccentCyan,
-            "AGENT ACTIVE ⚙️",
-            true
-        )
-        AgentState.CONNECTING -> Tuple5(
-            SurfaceElevated,
-            BorderDark,
-            TextSecondary,
-            "RECONNECTING 🔄",
-            true
-        )
-        AgentState.DISCONNECTED -> Tuple5(
-            AccentCrimsonMuted.copy(alpha = 0.4f),
-            AccentCrimson.copy(alpha = 0.5f),
-            AccentCrimson,
-            "OFFLINE 💤",
-            false
-        )
-        AgentState.COMPLETED -> Tuple5(
-            AccentEmeraldMuted.copy(alpha = 0.4f),
-            AccentEmerald.copy(alpha = 0.6f),
+        AgentState.RUNNING -> StatusConfig(
+            AccentEmeraldMuted.copy(alpha = 0.35f),
+            AccentEmerald.copy(alpha = 0.7f),
             AccentEmerald,
-            "TASK COMPLETE ✓",
-            false
+            "ACTIVE",
+            true
         )
-        AgentState.ERROR -> Tuple5(
-            AccentCrimsonMuted,
-            AccentCrimson,
-            AccentCrimson,
-            "PROCESS ERROR ✕",
-            false
+        AgentState.CONNECTING -> StatusConfig(
+            SurfaceElevated,
+            AccentCyan.copy(alpha = 0.6f),
+            AccentCyan,
+            "CONNECTING",
+            true
         )
-        AgentState.IDLE -> Tuple5(
+        AgentState.DISCONNECTED -> StatusConfig(
             SurfaceElevated,
             BorderDark,
             TextMuted,
-            "STANDBY ●",
+            "OFFLINE",
+            false
+        )
+        AgentState.COMPLETED -> StatusConfig(
+            AccentEmeraldMuted.copy(alpha = 0.25f),
+            AccentEmerald.copy(alpha = 0.5f),
+            AccentEmerald,
+            "COMPLETED",
+            false
+        )
+        AgentState.ERROR -> StatusConfig(
+            AccentCrimsonMuted.copy(alpha = 0.4f),
+            AccentCrimson.copy(alpha = 0.8f),
+            AccentCrimson,
+            "ERROR",
+            false
+        )
+        AgentState.IDLE -> StatusConfig(
+            SurfaceElevated,
+            BorderDark,
+            TextMuted,
+            "STANDBY",
             false
         )
     }
 
-    Box(
+    Row(
         modifier = modifier
-            .alpha(if (isPulsing) alphaAnim else 1f)
-            .background(bgColor, RoundedCornerShape(100.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(100.dp))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
+            .background(bgTint, RoundedCornerShape(4.dp))
+            .border(1.dp, borderTint, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        // Hardware LED dot
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .alpha(if (isPulsing) dotAlpha else 1f)
+                .background(ledColor, CircleShape)
+        )
+
+        // Monospace status label (No emojis)
         Text(
-            text = text,
-            color = textColor,
-            fontSize = 11.sp,
+            text = labelText,
+            color = if (state == AgentState.DISCONNECTED) TextSecondary else ledColor,
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = TerminalFontFamily,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.8.sp
         )
     }
 }
 
-private data class Tuple5<A, B, C, D, E>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-    val fifth: E
+private data class StatusConfig(
+    val bgTint: Color,
+    val borderTint: Color,
+    val ledColor: Color,
+    val labelText: String,
+    val isPulsing: Boolean
 )

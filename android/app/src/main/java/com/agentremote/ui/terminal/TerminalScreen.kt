@@ -2,7 +2,6 @@ package com.agentremote.ui.terminal
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -10,12 +9,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.agentremote.ui.components.LivePulsePill
 import com.agentremote.ui.components.SplitThumbBar
 import com.agentremote.ui.components.TriageActionCard
 import com.agentremote.ui.components.XTermWebView
 import com.agentremote.ui.theme.CanvasDark
+import com.agentremote.ui.theme.TerminalFontFamily
 import com.agentremote.ui.theme.TextPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,7 +27,7 @@ fun TerminalScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Intercept hardware and gesture back navigation to return cleanly to HomeScreen
+    // Intercept Android hardware/gesture back to safely return to HomeScreen
     BackHandler(onBack = onBack)
 
     val agentState by viewModel.agentState.collectAsState()
@@ -42,9 +44,12 @@ fun TerminalScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "CLI Terminal",
+                            text = "TERMINAL",
                             color = TextPrimary,
-                            style = MaterialTheme.typography.titleMedium
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = TerminalFontFamily,
+                            letterSpacing = 1.sp
                         )
                         LivePulsePill(state = agentState)
                     }
@@ -75,7 +80,7 @@ fun TerminalScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Animated Triage Action Card (Visible when prompt is pending)
+            // Triage Action Card (Prominently displayed when agent requires approval)
             AnimatedVisibility(
                 visible = activePrompt != null,
                 enter = expandVertically() + fadeIn(),
@@ -91,7 +96,7 @@ fun TerminalScreen(
                 }
             }
 
-            // Full xterm.js Terminal Viewport
+            // High-fidelity xterm.js viewport
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

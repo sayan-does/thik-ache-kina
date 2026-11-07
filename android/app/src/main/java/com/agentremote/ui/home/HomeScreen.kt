@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -47,11 +48,21 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "🤖 Agent Remote",
-                        color = TextPrimary,
-                        style = MaterialTheme.typography.titleLarge
-                    )
+                    Column {
+                        Text(
+                            text = "AGENT REMOTE",
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "CLI Terminal & Triage Controller",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            fontFamily = TerminalFontFamily
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = {
@@ -64,7 +75,7 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            tint = TextPrimary
+                            tint = TextSecondary
                         )
                     }
                 },
@@ -80,14 +91,15 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Connection Status Banner
+            // Target Host Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderDark, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp)),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -98,17 +110,23 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            text = "HOST STATUS",
+                            text = "TARGET HOST",
                             color = TextMuted,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontFamily = TerminalFontFamily,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
+                        val displayHost = if (tokenStorage.isConfigured) {
+                            if (tokenStorage.host.contains(":")) tokenStorage.host else "${tokenStorage.host}:${tokenStorage.port}"
+                        } else {
+                            "Unconfigured"
+                        }
                         Text(
-                            text = if (tokenStorage.isConfigured) "${tokenStorage.host}:${tokenStorage.port}" else "Not Configured",
+                            text = displayHost,
                             color = TextPrimary,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontFamily = TerminalFontFamily
                         )
                     }
@@ -120,74 +138,87 @@ fun HomeScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderHighlight, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                    .border(1.dp, BorderHighlight, RoundedCornerShape(8.dp)),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .background(SurfaceElevated, RoundedCornerShape(4.dp))
+                            .border(1.dp, BorderDark, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "ACTIVE SESSION",
+                            color = AccentCyan,
+                            fontSize = 10.sp,
+                            fontFamily = TerminalFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "ACTIVE CLI SESSION",
-                        color = AccentCyan,
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Real-Time Terminal & Triage Control",
+                        text = "Terminal Stream & Triage",
                         color = TextPrimary,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Receive notifications, approve file modifications, and send prompts to AGY, OpenCode, or Claude Code.",
+                        text = "Live ANSI output, interactive approval cards, and remote terminal controls for AGY, OpenCode, and Claude Code.",
                         color = TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Button(
                         onClick = onOpenTerminal,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(44.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = "Open Terminal Control →",
+                            text = "Open Terminal Control",
                             color = CanvasDark,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontSize = 13.sp,
+                            letterSpacing = 0.3.sp
                         )
                     }
                 }
             }
 
-            // Quick Start Launch Guide
+            // Quick Launch Host Guide
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderDark, RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp)),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "LAUNCH FROM LAPTOP POWERSHELL",
+                        text = "HOST LAUNCH COMMAND",
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontFamily = TerminalFontFamily,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Run any CLI agent wrapped with the bridge daemon:",
+                        text = "Run on your laptop PowerShell:",
                         color = TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val cmdText = "python bridge.py -- agy \"build login page\""
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(CanvasDark, RoundedCornerShape(6.dp))
@@ -197,9 +228,9 @@ fun HomeScreen(
                         Text(
                             text = "$ $cmdText\n$ python bridge.py -- opencode\n$ python bridge.py -- claude",
                             color = AccentCyan,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontFamily = TerminalFontFamily,
-                            lineHeight = 18.sp
+                            lineHeight = 17.sp
                         )
                     }
 
@@ -207,25 +238,44 @@ fun HomeScreen(
                     OutlinedButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(cmdText))
-                            Toast.makeText(context, "Copied template command!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Command copied", Toast.LENGTH_SHORT).show()
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderDark),
-                        shape = RoundedCornerShape(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderHighlight),
+                        shape = RoundedCornerShape(6.dp)
                     ) {
-                        Text("📋 Copy Command Template", color = TextPrimary, fontSize = 12.sp)
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Copy Command Template",
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontFamily = TerminalFontFamily
+                        )
                     }
                 }
             }
         }
     }
 
-    // Host & Security Settings Dialog
+    // Host Settings Dialog
     if (isSettingsOpen) {
         AlertDialog(
             onDismissRequest = { isSettingsOpen = false },
             title = {
-                Text(text = "Bridge Daemon Connection", color = TextPrimary)
+                Text(
+                    text = "Host Configuration",
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             },
             text = {
                 Column(
@@ -234,15 +284,14 @@ fun HomeScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // 1-Tap Clipboard Paste Button
+                    // Clipboard Import Button
                     FilledTonalButton(
                         onClick = {
                             val clipText = clipboardManager.getText()?.text?.trim()
                             if (clipText.isNullOrEmpty()) {
-                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Clipboard empty", Toast.LENGTH_SHORT).show()
                             } else {
                                 var parsedAny = false
-                                // Attempt JSON parse
                                 if (clipText.startsWith("{") && clipText.endsWith("}")) {
                                     try {
                                         val json = JSONObject(clipText)
@@ -268,7 +317,6 @@ fun HomeScreen(
                                 }
 
                                 if (!parsedAny) {
-                                    // Parse key=value or ws:// or IP:port
                                     if (clipText.contains("://") || clipText.contains(":") || clipText.contains(";")) {
                                         val (h, p) = TokenStorage.sanitizeHost(clipText)
                                         if (h.isNotBlank() && h != TokenStorage.DEFAULT_HOST) {
@@ -276,26 +324,27 @@ fun HomeScreen(
                                             if (p != null) portInput = p.toString()
                                             parsedAny = true
                                         }
-                                    } else if (clipText.length >= 32 && !clipText.contains(".")) {
-                                        // Hex auth token
+                                    } else if (clipText.length >= 8 && !clipText.contains(" ")) {
                                         tokenInput = TokenStorage.sanitizeToken(clipText)
                                         parsedAny = true
                                     }
                                 }
 
                                 if (parsedAny) {
-                                    Toast.makeText(context, "Imported configuration from clipboard!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Configuration imported", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    // Fallback: put in hostInput and sanitize
                                     val (h, p) = TokenStorage.sanitizeHost(clipText)
                                     hostInput = h
                                     if (p != null) portInput = p.toString()
-                                    Toast.makeText(context, "Applied host from clipboard", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Host imported", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceElevated)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceElevated),
+                        shape = RoundedCornerShape(6.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentPaste,
@@ -307,7 +356,6 @@ fun HomeScreen(
                         Text("Paste from Clipboard", color = AccentCyan, fontSize = 12.sp)
                     }
 
-                    // Lenient Host input: automatically splits IP:port and IP;port
                     OutlinedTextField(
                         value = hostInput,
                         onValueChange = { raw ->
@@ -321,30 +369,54 @@ fun HomeScreen(
                                 hostInput = raw.filterNot { it.isWhitespace() }
                             }
                         },
-                        label = { Text("Laptop Tailscale IP (e.g. 100.82.14.92)") },
-                        placeholder = { Text("100.x.y.z or IP:8765") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Laptop IP (e.g. 192.168.0.101)") },
+                        placeholder = { Text("IP only, without port") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = BorderDark
+                        )
                     )
 
                     OutlinedTextField(
                         value = portInput,
                         onValueChange = { portInput = it.filter { ch -> ch.isDigit() } },
                         label = { Text("Port (Default 8765)") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = BorderDark
+                        )
                     )
 
                     OutlinedTextField(
                         value = tokenInput,
                         onValueChange = { tokenInput = TokenStorage.sanitizeToken(it) },
                         label = { Text("Bearer Auth Token") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = BorderDark
+                        )
                     )
 
                     OutlinedTextField(
                         value = ntfyInput,
                         onValueChange = { ntfyInput = TokenStorage.sanitizeNtfyTopic(it) },
-                        label = { Text("ntfy.sh Topic (Optional)") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("Notification Topic (Optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = BorderDark
+                        )
                     )
                 }
             },
@@ -358,9 +430,10 @@ fun HomeScreen(
                             rawNtfy = ntfyInput
                         )
                         isSettingsOpen = false
-                        Toast.makeText(context, "Settings saved successfully!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald)
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text("Save & Connect", color = CanvasDark, fontWeight = FontWeight.Bold)
                 }
