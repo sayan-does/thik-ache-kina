@@ -48,3 +48,7 @@ android/.idea/
 # Bridge Local Runtime Config & Secrets
 agent-bridge/config.local.yaml
 agent-bridge/.token
+
+# Screenshots & Downloads
+*.png
+downloaded_assets/

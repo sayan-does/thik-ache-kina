@@ -103,6 +103,7 @@ fun TerminalScreen(
                     .weight(1f)
             ) {
                 XTermWebView(
+                    outputChunks = viewModel.outputChunks,
                     streamChunk = latestChunk,
                     snapshotHistory = snapshotHistory,
                     onGeometryChanged = { r, c -> viewModel.onGeometryChanged(r, c) }

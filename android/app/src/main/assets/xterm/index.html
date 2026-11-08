@@ -12,19 +12,32 @@
             box-sizing: border-box;
         }
         html, body {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
             background-color: #0A0B0E;
             overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             font-family: 'JetBrains Mono', 'Roboto Mono', 'SF Pro Mono', monospace;
         }
         #terminal-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
             height: 100%;
-            padding: 4px 6px;
+            padding: 6px 8px;
             overflow: hidden;
         }
         .xterm {
+            width: 100%;
             height: 100%;
         }
         .xterm .xterm-viewport {
@@ -53,6 +66,21 @@
         let fitAddon = null;
         const pendingQueue = [];
         let isReady = false;
+
+        function safeFit() {
+            if (!fitAddon || !term) return;
+            try {
+                fitAddon.fit();
+                // Avoid reporting collapsed 1-line geometry to ConPTY
+                if (term.rows >= 5 && term.cols >= 20) {
+                    if (window.AndroidInterface && window.AndroidInterface.onGeometry) {
+                        window.AndroidInterface.onGeometry(term.rows, term.cols);
+                    }
+                }
+            } catch (e) {
+                console.warn("safeFit error:", e);
+            }
+        }
 
         function initTerminal() {
             try {
@@ -90,7 +118,7 @@
                     lineHeight: 1.22,
                     cursorBlink: true,
                     convertEol: true,
-                    scrollback: 3000,
+                    scrollback: 5000,
                     allowProposedApi: true
                 });
 
@@ -102,15 +130,21 @@
                 const container = document.getElementById('terminal-container');
                 term.open(container);
 
-                if (fitAddon) {
-                    try {
-                        fitAddon.fit();
-                    } catch (e) {
-                        console.warn("Initial fit error:", e);
-                    }
-                }
-
                 isReady = true;
+
+                // Multiple delayed layout passes to accommodate WebView layout lifecycle
+                requestAnimationFrame(safeFit);
+                setTimeout(safeFit, 100);
+                setTimeout(safeFit, 300);
+                setTimeout(safeFit, 600);
+
+                // Observe container size changes dynamically
+                if (window.ResizeObserver) {
+                    const ro = new ResizeObserver(() => {
+                        safeFit();
+                    });
+                    ro.observe(container);
+                }
 
                 // Flush any writes that arrived during initialization
                 while (pendingQueue.length > 0) {
@@ -118,26 +152,12 @@
                     term.write(chunk);
                 }
 
-                // Notify Android bridge that terminal is ready and report geometry
-                if (window.AndroidInterface) {
-                    if (window.AndroidInterface.onReady) {
-                        window.AndroidInterface.onReady();
-                    }
-                    if (window.AndroidInterface.onGeometry) {
-                        window.AndroidInterface.onGeometry(term.rows, term.cols);
-                    }
+                // Notify Android bridge that terminal is ready
+                if (window.AndroidInterface && window.AndroidInterface.onReady) {
+                    window.AndroidInterface.onReady();
                 }
 
-                window.addEventListener('resize', () => {
-                    if (fitAddon) {
-                        try {
-                            fitAddon.fit();
-                            if (window.AndroidInterface && window.AndroidInterface.onGeometry) {
-                                window.AndroidInterface.onGeometry(term.rows, term.cols);
-                            }
-                        } catch (e) {}
-                    }
-                });
+                window.addEventListener('resize', safeFit);
 
             } catch (err) {
                 console.error("Error initializing xterm:", err);
@@ -154,7 +174,7 @@
 
         window.clearTerminal = function() {
             if (term) {
-                term.clear();
+                term.reset();
             }
             pendingQueue.length = 0;
         };

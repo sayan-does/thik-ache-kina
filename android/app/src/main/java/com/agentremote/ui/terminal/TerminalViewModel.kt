@@ -3,8 +3,12 @@ package com.agentremote.ui.terminal
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.agentremote.data.*
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class TerminalViewModel(application: Application) : AndroidViewModel(application), BridgeClient.BridgeListener {
@@ -23,6 +27,12 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     private val _latestChunk = MutableStateFlow<String?>(null)
     val latestChunk: StateFlow<String?> = _latestChunk.asStateFlow()
+
+    private val _outputChunks = MutableSharedFlow<String>(
+        extraBufferCapacity = 1000,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val outputChunks: SharedFlow<String> = _outputChunks.asSharedFlow()
 
     private val _sessionId = MutableStateFlow("")
     val sessionId: StateFlow<String> = _sessionId.asStateFlow()
@@ -101,6 +111,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     override fun onOutputChunk(chunk: String) {
         _latestChunk.value = chunk
+        _outputChunks.tryEmit(chunk)
     }
 
     override fun onStateUpdate(state: AgentState, activePrompt: PromptData?) {

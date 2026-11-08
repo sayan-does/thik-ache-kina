@@ -32,7 +32,8 @@ class XTermBridge(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun XTermWebView(
-    streamChunk: String?,
+    streamChunk: String? = null,
+    outputChunks: kotlinx.coroutines.flow.SharedFlow<String>? = null,
     snapshotHistory: String?,
     onGeometryChanged: (rows: Int, cols: Int) -> Unit,
     modifier: Modifier = Modifier
@@ -62,9 +63,18 @@ fun XTermWebView(
         }
     }
 
-    // Effect for streaming incremental chunks
+    // Effect for sequential stream consumption via SharedFlow
+    LaunchedEffect(outputChunks) {
+        outputChunks?.collect { chunk ->
+            writeToTerminal(chunk)
+        }
+    }
+
+    // Effect for streaming incremental chunks (fallback)
     LaunchedEffect(streamChunk) {
-        streamChunk?.let { writeToTerminal(it) }
+        if (outputChunks == null) {
+            streamChunk?.let { writeToTerminal(it) }
+        }
     }
 
     // Effect for full snapshot history hydration (reconnect or ready)
