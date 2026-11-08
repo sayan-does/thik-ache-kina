@@ -15,6 +15,8 @@ import secrets
 import socket
 import subprocess
 import sys
+import threading
+import time
 import uuid
 import yaml
 from typing import Optional
@@ -118,9 +120,15 @@ def load_or_init_config(config_path: str = "config.yaml") -> dict:
         },
     }
 
-    if os.path.exists(config_path):
+    actual_path = config_path
+    if not os.path.exists(actual_path):
+        script_dir_cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
+        if os.path.exists(script_dir_cfg):
+            actual_path = script_dir_cfg
+
+    if os.path.exists(actual_path):
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(actual_path, "r", encoding="utf-8") as f:
                 loaded = yaml.safe_load(f) or {}
                 for section in default_config:
                     if section in loaded and isinstance(loaded[section], dict):
@@ -128,7 +136,7 @@ def load_or_init_config(config_path: str = "config.yaml") -> dict:
                     elif section in loaded:
                         default_config[section] = loaded[section]
         except Exception as e:
-            logger.warning(f"Failed to read {config_path}, using defaults: {e}")
+            logger.warning(f"Failed to read {actual_path}, using defaults: {e}")
 
     dirty = False
     if not default_config["security"]["auth_token"]:
@@ -141,9 +149,9 @@ def load_or_init_config(config_path: str = "config.yaml") -> dict:
 
     if dirty:
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
+            with open(actual_path, "w", encoding="utf-8") as f:
                 yaml.dump(default_config, f, default_flow_style=False)
-            logger.info(f"Generated new security token and notification topic in {config_path}")
+            logger.info(f"Generated new security token and notification topic in {actual_path}")
         except Exception as e:
             logger.warning(f"Could not persist generated config: {e}")
 
@@ -362,13 +370,57 @@ class BridgeDaemon:
         # 3. Spawn initial PTY
         self.spawn_pty()
 
-        # 4. Output processing pipeline
+        # 4. If running in an interactive console terminal, forward local keyboard input
+        stop_input_event = threading.Event()
+        if sys.stdin.isatty():
+            def _local_console_reader():
+                SPECIAL_KEYS = {
+                    "H": "\x1b[A",  # Up
+                    "P": "\x1b[B",  # Down
+                    "M": "\x1b[C",  # Right
+                    "K": "\x1b[D",  # Left
+                    "S": "\x1b[3~", # Del
+                    "G": "\x1b[H",  # Home
+                    "O": "\x1b[F",  # End
+                }
+                while not stop_input_event.is_set():
+                    if sys.platform == "win32":
+                        try:
+                            import msvcrt
+                            if msvcrt.kbhit():
+                                ch = msvcrt.getwch()
+                                if ch in ("\x00", "\xe0"):
+                                    code = msvcrt.getwch()
+                                    seq = SPECIAL_KEYS.get(code, "")
+                                    if seq and self.pty:
+                                        self.pty.write(seq)
+                                elif ch == "\r":
+                                    if self.pty:
+                                        self.pty.write("\r")
+                                elif ch == "\x08":
+                                    if self.pty:
+                                        self.pty.write("\x08")
+                                else:
+                                    if self.pty:
+                                        self.pty.write(ch)
+                            else:
+                                time.sleep(0.01)
+                        except Exception:
+                            time.sleep(0.05)
+                    else:
+                        time.sleep(0.1)
+
+            t = threading.Thread(target=_local_console_reader, daemon=True)
+            t.start()
+
+        # 5. Output processing pipeline
         output_task = asyncio.create_task(self._process_output_loop())
         try:
             await output_task
         except asyncio.CancelledError:
             pass
         finally:
+            stop_input_event.set()
             if self.pty:
                 self.pty.terminate()
             if self.ws_server:

@@ -117,7 +117,8 @@ class WebSocketServer:
 
         # 2. Authentication: Loopback Host Client OR Cryptographic Device Identity OR Bearer Token
         is_authenticated = False
-        is_loopback = request.remote in ("127.0.0.1", "::1", "localhost")
+        remote_ip = request.remote or ""
+        is_loopback = remote_ip in ("127.0.0.1", "::1", "localhost") or remote_ip.endswith("127.0.0.1")
         is_host_client = is_loopback and (
             request.headers.get("X-Host-Client") == "true" or
             request.query.get("host_client") == "true"

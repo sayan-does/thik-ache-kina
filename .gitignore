@@ -46,6 +46,7 @@ android/.gradle/
 android/.idea/
 
 # Bridge Local Runtime Config & Secrets
+/config.yaml
 agent-bridge/config.local.yaml
 agent-bridge/.token
 

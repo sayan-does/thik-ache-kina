@@ -333,6 +333,11 @@ class DesktopTrayWindow(QMainWindow):
         sess_layout.addLayout(sel_row)
 
         action_row = QHBoxLayout()
+        attach_btn = QPushButton("Open Terminal Window")
+        attach_btn.setObjectName("btn_primary")
+        attach_btn.clicked.connect(self.open_attached_console)
+        action_row.addWidget(attach_btn)
+
         restart_btn = QPushButton("Restart Shell")
         restart_btn.clicked.connect(lambda: self.control_session("RESTART"))
         action_row.addWidget(restart_btn)
@@ -383,6 +388,9 @@ class DesktopTrayWindow(QMainWindow):
         show_action = tray_menu.addAction("Show Remote Controller")
         show_action.triggered.connect(self.show_popover)
 
+        attach_action = tray_menu.addAction("Open Terminal Window")
+        attach_action.triggered.connect(self.open_attached_console)
+
         copy_action = tray_menu.addAction("Copy Tailscale IP")
         copy_action.triggered.connect(self.copy_ip)
 
@@ -409,6 +417,16 @@ class DesktopTrayWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def open_attached_console(self):
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        attach_bat = os.path.join(root_dir, "attach.bat")
+        if not os.path.exists(attach_bat):
+            attach_bat = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attach.bat")
+        try:
+            subprocess.Popen(["cmd.exe", "/c", "start", "Agent Remote Console", attach_bat], shell=True)
+        except Exception as e:
+            QMessageBox.warning(self, "Terminal Launch", f"Could not launch console: {e}")
 
     def closeEvent(self, event):
         """Minimize to tray instead of quitting."""
